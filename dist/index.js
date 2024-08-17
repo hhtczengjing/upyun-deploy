@@ -32493,15 +32493,34 @@ const core = __importStar(__nccwpck_require__(2186));
 const input_helper_1 = __nccwpck_require__(6455);
 const upyun_helper_1 = __nccwpck_require__(680);
 async function run() {
+    // Parse inputs from workflow steps define
     const inputs = (0, input_helper_1.getInputs)();
     if (inputs.length === 0) {
-        core.info(`No artifacts will be uploaded.`);
+        core.error(`No artifacts will be uploaded.`);
         return;
     }
+    // Start to upload artifact
+    const results = [];
     for (const input of inputs) {
-        core.debug(`Start to update artifact ${input.srcPath} -> ${input.destPath}`);
-        await (0, upyun_helper_1.uploadArtifact)(input.srcPath, input.destPath);
+        core.info(`Start to upload artifact from ${input.srcPath} to ${input.destPath}`);
+        try {
+            const result = await (0, upyun_helper_1.uploadArtifact)(input.srcPath, input.destPath);
+            results.push({
+                srcPath: input.srcPath,
+                destPath: input.destPath,
+                result: result
+            });
+        }
+        catch (e) {
+            results.push({
+                srcPath: input.srcPath,
+                destPath: input.destPath,
+                result: false
+            });
+        }
     }
+    // Set outputs for other workflow steps to use
+    core.setOutput('result', JSON.stringify(results));
 }
 exports.run = run;
 
@@ -32551,20 +32570,20 @@ async function uploadArtifact(srcPath, destPath, opts = {}) {
         const operatorName = process.env.UPYUN_OPERATOR;
         const password = process.env.UPYUN_PASSWORD;
         if (!serviceName) {
-            core.debug(`error: UPYUN_SERVICE_NAME is empty`);
+            core.error(`error: UPYUN_SERVICE_NAME is empty`);
             resolve(false);
             return;
         }
         if (!srcPath || !destPath) {
-            core.debug(`error: srcPath/destPath is empty`);
+            core.error(`error: srcPath/destPath is empty`);
             resolve(false);
             return;
         }
         const remotePath = `${destPath}/${path_1.default.parse(srcPath).base}`;
         const filePath = srcPath;
-        core.debug(`remotePath: ${remotePath}, filePath: ${filePath}`);
+        core.info(`remotePath: ${remotePath}, filePath: ${filePath}`);
         if (!utils.isFile(srcPath)) {
-            core.debug(`srcPath: ${srcPath} is not file`);
+            core.error(`srcPath: ${srcPath} is not file`);
             resolve(false);
             return;
         }
@@ -32579,11 +32598,12 @@ async function uploadArtifact(srcPath, destPath, opts = {}) {
             }
             const { fileSize, partCount, uuid } = result;
             core.debug(`fileSize: ${fileSize}, partCount: ${partCount}, uuid: ${uuid}`);
-            Promise.all(Array.apply(null, { length: partCount }).map((_, partId) => {
+            const promises = Array.apply(null, { length: partCount }).map((_, partId) => {
                 return client.multipartUpload(remotePath, filePath, uuid, partId);
-            }))
+            });
+            Promise.all(promises)
                 .then(() => {
-                core.debug(`completeMultipartUpload: ${uuid}`);
+                core.info(`completeMultipartUpload: ${uuid} ${remotePath}`);
                 const result = client.completeMultipartUpload(remotePath, uuid);
                 resolve(result);
             })

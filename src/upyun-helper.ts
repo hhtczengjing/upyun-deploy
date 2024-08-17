@@ -13,23 +13,23 @@ export async function uploadArtifact(
     const operatorName = process.env.UPYUN_OPERATOR
     const password = process.env.UPYUN_PASSWORD
     if (!serviceName) {
-      core.debug(`error: UPYUN_SERVICE_NAME is empty`)
+      core.error(`error: UPYUN_SERVICE_NAME is empty`)
       resolve(false)
       return
     }
 
     if (!srcPath || !destPath) {
-      core.debug(`error: srcPath/destPath is empty`)
+      core.error(`error: srcPath/destPath is empty`)
       resolve(false)
       return
     }
 
     const remotePath = `${destPath}/${path.parse(srcPath).base}`
     const filePath = srcPath
-    core.debug(`remotePath: ${remotePath}, filePath: ${filePath}`)
+    core.info(`remotePath: ${remotePath}, filePath: ${filePath}`)
 
     if (!utils.isFile(srcPath)) {
-      core.debug(`srcPath: ${srcPath} is not file`)
+      core.error(`srcPath: ${srcPath} is not file`)
       resolve(false)
       return
     }
@@ -43,18 +43,19 @@ export async function uploadArtifact(
           resolve(false)
           return
         }
+
         const { fileSize, partCount, uuid } = result
         core.debug(
           `fileSize: ${fileSize}, partCount: ${partCount}, uuid: ${uuid}`
         )
-
-        Promise.all(
-          Array.apply(null, { length: partCount } as any).map((_, partId) => {
+        const promises = Array.apply(null, { length: partCount } as any).map(
+          (_, partId) => {
             return client.multipartUpload(remotePath, filePath, uuid, partId)
-          })
+          }
         )
+        Promise.all(promises)
           .then(() => {
-            core.debug(`completeMultipartUpload: ${uuid}`)
+            core.info(`completeMultipartUpload: ${uuid} ${remotePath}`)
             const result = client.completeMultipartUpload(remotePath, uuid)
             resolve(result)
           })
